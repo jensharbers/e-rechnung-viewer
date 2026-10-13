@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>E-Rechnung Viewer</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1b1f24;--mu:#667085;--bd:#dde1e7;--ac:#1a56db;--ok:#157f3b;--wa:#b54708;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14171c;--card:#1d2127;--tx:#e8eaed;--mu:#9aa3b0;--bd:#323841;--ac:#6ea0ff;--ok:#4cc27a;--wa:#f0a050}}
+:root[data-theme="dark"]{--bg:#14171c;--card:#1d2127;--tx:#e8eaed;--mu:#9aa3b0;--bd:#323841;--ac:#6ea0ff;--ok:#4cc27a;--wa:#f0a050}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px}h1{font-size:22px;margin:4px 0 12px}h2{font-size:15px;margin:0 0 10px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px}
+#drop{border:2px dashed var(--bd);text-align:center;padding:22px;cursor:pointer}#drop.on{border-color:var(--ac)}
+button,.btn{background:var(--ac);color:#fff;border:0;border-radius:8px;padding:7px 12px;font:inherit;cursor:pointer}
+button.s{background:transparent;color:var(--ac);border:1px solid var(--bd);padding:2px 8px;font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin:14px 0}
+.big{font-size:28px;font-weight:700}.mu{color:var(--mu);font-size:13px}.err{color:var(--wa);margin-top:8px}
+.kv{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--bd)}.kv:last-child{border:0}.kv b{text-align:right;word-break:break-all}
+.q{display:inline-flex;width:18px;height:18px;border:1.5px solid var(--ac);border-radius:50%;color:var(--ac);font:700 11px/1 system-ui;align-items:center;justify-content:center;text-decoration:none;flex:none;margin-left:6px}
+.q:hover{background:var(--ac);color:#fff}
+.w{overflow-x:auto}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd);vertical-align:top}th{font-size:12px;color:var(--mu);white-space:nowrap}td.n,th.n{text-align:right}
+.g{margin:14px 0 6px;font-weight:700}.bt{color:var(--mu);font-size:12px;white-space:nowrap}
+.tag{font-size:12px;padding:1px 7px;border-radius:9px;border:1px solid currentColor}.ok{color:var(--ok)}.wa{color:var(--wa)}
+.full{grid-column:1/-1}.v{display:flex;gap:8px;padding:4px 0;align-items:baseline}.v .tag{flex:none}.er{color:#d92d20}
+footer{margin:18px 0;color:var(--mu);font-size:12px}footer a{color:var(--ac)}
+</style></head><body><main>
+<h1>E-Rechnung Viewer <span class="mu">ZUGFeRD · Factur-X · XRechnung</span></h1>
+<div class="card" id="drop"><b>Datei hierher ziehen oder klicken</b><div class="mu">ZUGFeRD-PDF oder XML (XRechnung CII/UBL) – die Verarbeitung erfolgt nur lokal im Browser.</div>
+<div style="margin-top:8px"><button id="ex" type="button">Beispiel laden</button></div><input id="f" type="file" accept=".pdf,.xml,application/pdf,text/xml" hidden><div class="err" id="err"></div></div>
+<div id="out" hidden>
+<div class="grid" id="panels"></div>
+<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h2 id="ttl">Alle Felder</h2><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="s" type="button" id="c1">CSV Felder</button><button class="s" type="button" id="c2">CSV Positionen</button><label class="mu"><input type="checkbox" id="emp"> leere Felder zeigen</label></span></div><div id="fields"></div>
+<div class="g">Positionen</div><div class="w" id="lines"></div></div></div>
+<footer>Die ?-Symbole öffnen die Feldbeschreibung der Peppol-BIS-Billing-3.0-Syntax (UBL, entspricht EN 16931). Weitere Quellen: <a href="https://xeinkauf.de/xrechnung/" target="_blank" rel="noopener">XRechnung (KoSIT/XEinkauf)</a> · <a href="https://www.ferd-net.de/" target="_blank" rel="noopener">ZUGFeRD (FeRD)</a>. Keine Rechts- oder Steuerberatung.</footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const kids=(e,n)=>[...e.children].filter(c=>c.localName===n);
+function sel(cs,seg){const m=seg.match(/^(?:\w+:)?(\w+)(?:\[(.+)\])?$/),n=m[1],f=m[2],o=[];
+ for(const c of cs){let k=kids(c,n);if(f){if(/^\d+$/.test(f))k=k[f-1]?[k[f-1]]:[];else{const[a,v]=f.slice(1).split('=');k=k.filter(x=>x.getAttribute(a)===v)}}o.push(...k)}return o}
+const find=(c,p)=>p.split('/').reduce((a,s)=>sel(a,s),[c]);
+const url=p=>'https://docs.peppol.eu/poacc/billing/3.0/syntax/ubl-invoice/'+p.split('/').map(s=>s.replace(/\[.*\]/,'').replace(':','-')).join('/')+'/';
+const Q=(u,bt)=>`<a class="q" href="${url(u)}" target="_blank" rel="noopener" title="${bt}: Definition öffnen">?</a>`;
+const SU='cac:AccountingSupplierParty/cac:Party/',BU='cac:AccountingCustomerParty/cac:Party/',AG='SupplyChainTradeTransaction/ApplicableHeaderTradeAgreement/',
+CS=AG+'SellerTradeParty/',CB=AG+'BuyerTradeParty/',ST='SupplyChainTradeTransaction/ApplicableHeaderTradeSettlement/',MS=ST+'SpecifiedTradeSettlementHeaderMonetarySummation/',PM=ST+'SpecifiedTradeSettlementPaymentMeans/';
+// [Gruppe, BT, Label, UBL-Pfad, CII-Pfad, Typ]
+const F=[];const add=(g,bt,l,u,c,t)=>F.push([g,bt,l,u,c,t]);
+const G1='Rechnung';add(G1,'BT-1','Rechnungsnummer','cbc:ID','ExchangedDocument/ID');add(G1,'BT-2','Rechnungsdatum','cbc:IssueDate','ExchangedDocument/IssueDateTime/DateTimeString','d');
+add(G1,'BT-3','Rechnungsart','cbc:InvoiceTypeCode','ExchangedDocument/TypeCode');add(G1,'BT-5','Währung','cbc:DocumentCurrencyCode',ST+'InvoiceCurrencyCode');
+add(G1,'BT-9','Fälligkeitsdatum','cbc:DueDate',ST+'SpecifiedTradePaymentTerms/DueDateDateTime/DateTimeString','d');add(G1,'BT-10','Käuferreferenz / Leitweg-ID','cbc:BuyerReference',AG+'BuyerReference');
+add(G1,'BT-13','Bestellnummer','cac:OrderReference/cbc:ID',AG+'BuyerOrderReferencedDocument/IssuerAssignedID');add(G1,'BT-22','Bemerkung','cbc:Note','ExchangedDocument/IncludedNote/Content');
+add(G1,'BT-23','Geschäftsprozess','cbc:ProfileID','ExchangedDocumentContext/BusinessProcessSpecifiedDocumentContextParameter/ID');add(G1,'BT-24','Spezifikationskennung (Profil)','cbc:CustomizationID','ExchangedDocumentContext/GuidelineSpecifiedDocumentContextParameter/ID');
+[['Verkäufer',SU,CS,[27,31,32,35,37,38,40,41,42,43,34]],['Käufer',BU,CB,[44,48,0,50,52,53,55,56,57,58,49]]].forEach(([g,u,c,b])=>{
+ const r=[['Name','cac:PartyLegalEntity/cbc:RegistrationName','Name'],['USt-IdNr.','cac:PartyTaxScheme[1]/cbc:CompanyID','SpecifiedTaxRegistration/ID[@schemeID=VA]'],['Steuernummer','cac:PartyTaxScheme[2]/cbc:CompanyID','SpecifiedTaxRegistration/ID[@schemeID=FC]'],
+ ['Straße','cac:PostalAddress/cbc:StreetName','PostalTradeAddress/LineOne'],['Ort','cac:PostalAddress/cbc:CityName','PostalTradeAddress/CityName'],['PLZ','cac:PostalAddress/cbc:PostalZone','PostalTradeAddress/PostcodeCode'],['Land','cac:PostalAddress/cac:Country/cbc:IdentificationCode','PostalTradeAddress/CountryID'],
+ ['Ansprechpartner','cac:Contact/cbc:Name','DefinedTradeContact/PersonName'],['Telefon','cac:Contact/cbc:Telephone','DefinedTradeContact/TelephoneUniversalCommunication/CompleteNumber'],['E-Mail','cac:Contact/cbc:ElectronicMail','DefinedTradeContact/EmailURIUniversalCommunication/URIID'],['Elektronische Adresse','cbc:EndpointID','URIUniversalCommunication/URIID']];
+ r.forEach((x,i)=>{if(b[i])add(g,'BT-'+b[i],x[0],u+x[1],c+x[2])})});
+const GZ='Zahlung';add(GZ,'BT-81','Zahlungsart','cac:PaymentMeans/cbc:PaymentMeansCode',PM+'TypeCode');add(GZ,'BT-59','Zahlungsempfänger','cac:PayeeParty/cac:PartyName/cbc:Name',ST+'PayeeTradeParty/Name');
+add(GZ,'BT-84','IBAN','cac:PaymentMeans/cac:PayeeFinancialAccount/cbc:ID',PM+'PayeePartyCreditorFinancialAccount/IBANID');add(GZ,'BT-85','Kontoinhaber','cac:PaymentMeans/cac:PayeeFinancialAccount/cbc:Name',PM+'PayeePartyCreditorFinancialAccount/AccountName');
+add(GZ,'BT-86','BIC','cac:PaymentMeans/cac:PayeeFinancialAccount/cac:FinancialInstitutionBranch/cbc:ID',PM+'PayeeSpecifiedCreditorFinancialInstitution/BICID');add(GZ,'BT-83','Verwendungszweck','cac:PaymentMeans/cbc:PaymentID',ST+'PaymentReference');
+add(GZ,'BT-20','Zahlungsbedingungen','cac:PaymentTerms/cbc:Note',ST+'SpecifiedTradePaymentTerms/Description');
+const GS='Summen';[['BT-106','Summe Positionen netto','cac:LegalMonetaryTotal/cbc:LineExtensionAmount','LineTotalAmount'],['BT-107','Nachlässe','cac:LegalMonetaryTotal/cbc:AllowanceTotalAmount','AllowanceTotalAmount'],['BT-108','Zuschläge','cac:LegalMonetaryTotal/cbc:ChargeTotalAmount','ChargeTotalAmount'],
+['BT-109','Gesamtbetrag netto','cac:LegalMonetaryTotal/cbc:TaxExclusiveAmount','TaxBasisTotalAmount'],['BT-110','Umsatzsteuer gesamt','cac:TaxTotal/cbc:TaxAmount','TaxTotalAmount'],['BT-112','Gesamtbetrag brutto','cac:LegalMonetaryTotal/cbc:TaxInclusiveAmount','GrandTotalAmount'],
+['BT-113','Bereits gezahlt','cac:LegalMonetaryTotal/cbc:PrepaidAmount','TotalPrepaidAmount'],['BT-115','Zahlbetrag','cac:LegalMonetaryTotal/cbc:PayableAmount','DuePayableAmount']].forEach(x=>add(GS,x[0],x[1],x[2],MS+x[3],'m'));
+const CODES={'BT-3':{380:'Handelsrechnung',381:'Gutschrift',384:'Korrekturrechnung',326:'Teilrechnung',389:'Gutschriftsverfahren',875:'Teilrechnung (Bau)',876:'Schlussrechnung (Bau)',877:'Schlussrechnung'},'BT-81':{30:'Überweisung',58:'SEPA-Überweisung',59:'SEPA-Lastschrift',48:'Karte',49:'Lastschrift',10:'Bar',42:'Zahlung auf Bankkonto',57:'Dauerauftrag'}};
+const TAXC={S:'Regelsteuersatz',Z:'Nullsatz',E:'steuerbefreit',AE:'Reverse Charge',K:'innergemeinschaftl. Lieferung',G:'Ausfuhr',O:'nicht steuerbar',L:'IGIC (Kanaren)',M:'IPSI'};
+let ROOT,CII,LEG,V,CUR,drawn;
+const V1M={ExchangedDocumentContext:'SpecifiedExchangedDocumentContext',ExchangedDocument:'HeaderExchangedDocument',SupplyChainTradeTransaction:'SpecifiedSupplyChainTradeTransaction',ApplicableHeaderTradeAgreement:'ApplicableSupplyChainTradeAgreement',ApplicableHeaderTradeSettlement:'ApplicableSupplyChainTradeSettlement',SpecifiedTradeSettlementHeaderMonetarySummation:'SpecifiedTradeSettlementMonetarySummation',SpecifiedTradeSettlementLineMonetarySummation:'SpecifiedTradeSettlementMonetarySummation',IssuerAssignedID:'ID',RateApplicablePercent:'ApplicablePercent',SpecifiedLineTradeAgreement:'SpecifiedSupplyChainTradeAgreement',SpecifiedLineTradeDelivery:'SpecifiedSupplyChainTradeDelivery',SpecifiedLineTradeSettlement:'SpecifiedSupplyChainTradeSettlement'};
+const mp=p=>LEG?p.split('/').map(s=>s.replace(/^(\w+)/,(m,n)=>V1M[n]||m)).join('/'):p;
+function val(c,p){if(!p)return'';p=mp(p);if(ROOT.localName==='CreditNote')p=p.replace(/InvoiceLine/g,'CreditNoteLine').replace('InvoicedQuantity','CreditedQuantity');return find(c,p).map(e=>e.textContent.trim()).filter(Boolean).join(', ')}
+const fd=s=>{const m=String(s).match(/^(\d{4})-?(\d{2})-?(\d{2})/);return m?`${m[3]}.${m[2]}.${m[1]}`:s};
+const fm=s=>{const n=parseFloat(s);if(isNaN(n))return s;try{return n.toLocaleString('de-DE',{style:'currency',currency:CUR||'EUR'})}catch(e){return n.toFixed(2)}};
+const ibanOk=s=>{s=s.replace(/\s/g,'').toUpperCase();if(!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(s))return false;const r=(s.slice(4)+s.slice(0,4)).replace(/[A-Z]/g,c=>c.charCodeAt(0)-55);let m=0;for(const d of r)m=(m*10+ +d)%97;return m===1};
+const iban=s=>s.replace(/\s/g,'').replace(/(.{4})/g,'$1 ').trim();
+function show(v,bt,t){if(CODES[bt]&&CODES[bt][v])return v+' – '+CODES[bt][v];return t==='d'?fd(v):t==='m'?fm(v):esc(v)}
+function rows(ub,cb,cols){const base=CII?cb:ub;return find(ROOT,mp(ROOT.localName==='CreditNote'?base.replace(/InvoiceLine/g,'CreditNoteLine'):base)).map(e=>cols.map(c=>val(e,CII?c[2]:c[1])))}
+const cp=t=>`<button class="s" type="button" data-c="${esc(t)}">kopieren</button>`;
+function render(){
+ V={};F.forEach(f=>V[f[1]]=val(ROOT,CII?f[4]:f[3]));CUR=V['BT-5']||'EUR';
+ const pay=V['BT-115'],kv=(k,v)=>v?`<div class="kv"><span>${k}</span><b>${v}</b></div>`:'';
+ const ib=V['BT-84'],ok=ib&&ibanOk(ib),ref=V['BT-83']||(V['BT-1']?'Rechnung '+V['BT-1']:''),means=V['BT-81'];
+ let p1=`<div class="card"><h2>1 · Wie viel überweisen?</h2><div class="big">${pay?fm(pay):'–'}</div>${pay?cp(pay):''}<div style="margin-top:8px">`+kv('Gesamtbetrag brutto',V['BT-112']&&fm(V['BT-112']))+kv('abzgl. bereits gezahlt',V['BT-113']&&fm(V['BT-113']))+kv('Fällig am',V['BT-9']&&fd(V['BT-9']))+kv('Zahlungsbedingungen',esc(V['BT-20']))+'</div>'
+  +(pay&&parseFloat(pay)<=0?'<div class="err">Zahlbetrag ist 0 oder negativ (Gutschrift/bereits bezahlt).</div>':'')+'</div>';
+ let p2=`<div class="card"><h2>2 · Wohin?</h2>`+kv('Empfänger',esc(V['BT-59']||V['BT-85']||V['BT-27']))+(ib?`<div class="kv"><span>IBAN</span><b>${esc(iban(ib))} <span class="tag ${ok?'ok':'wa'}">${ok?'Prüfsumme OK':'Prüfsumme ungültig'}</span></b></div>${cp(ib.replace(/\s/g,''))}`:'<div class="mu">Keine Bankverbindung in der Rechnung.</div>')
+  +kv('BIC',esc(V['BT-86']))+kv('Verwendungszweck',esc(ref))+(ref?cp(ref):'')+kv('Zahlungsart',show(means,'BT-81'))+(means==='59'||means==='49'?'<div class="err">Lastschrift: Der Betrag wird eingezogen, nicht überweisen!</div>':'')+qrBlock()+'</div>';
+ const vr=rows('cac:TaxTotal/cac:TaxSubtotal',ST+'ApplicableTradeTax',[[0,'cac:TaxCategory/cbc:ID','CategoryCode'],[0,'cac:TaxCategory/cbc:Percent','RateApplicablePercent'],[0,'cbc:TaxableAmount','BasisAmount'],[0,'cbc:TaxAmount','CalculatedAmount'],[0,'cac:TaxCategory/cbc:TaxExemptionReason','ExemptionReason']]);
+ let p3=`<div class="card"><h2>3 · Wie viel Umsatzsteuer?</h2><div class="big">${V['BT-110']?fm(V['BT-110']):'–'}</div><div class="w"><table><tr><th>Kategorie</th><th class="n">Satz</th><th class="n">Netto</th><th class="n">USt</th></tr>`
+  +vr.map(r=>`<tr><td>${esc(r[0])} <span class="mu">${esc(TAXC[r[0]]||'')}</span>${r[4]?`<div class="mu">${esc(r[4])}</div>`:''}</td><td class="n">${esc(r[1])} %</td><td class="n">${fm(r[2])}</td><td class="n">${fm(r[3])}</td></tr>`).join('')+'</table></div>'
+  +(V['BT-109']?`<div class="mu" style="margin-top:6px">Netto ${fm(V['BT-109'])} + USt ${fm(V['BT-110']||0)} = brutto ${fm(V['BT-112'])}</div>`:'')+'</div>';
+ VR=vr;$('#panels').innerHTML=p1+p2+p3+pv();
+ $('#ttl').textContent='Alle Felder – '+(LEG?'ZUGFeRD 1.0 (CII 2013)':CII?'CII-Syntax (ZUGFeRD/Factur-X/XRechnung CII)':'UBL-Syntax (XRechnung UBL)');
+ let h='',cg='';const se=$('#emp').checked;
+ F.forEach(f=>{const v=V[f[1]];if(!v&&!se)return;if(f[0]!==cg){cg=f[0];h+=`<div class="g">${cg}</div>`}
+  h+=`<div class="kv"><span>${f[2]} <span class="bt">${f[1]}</span></span><span style="display:flex;align-items:center"><b>${v?show(v,f[1],f[5]):'<span class="mu">–</span>'}</b>${Q(f[3],f[1])}</span></div>`});
+ $('#fields').innerHTML=h;
+ const L=[['BT-126','Pos.','cbc:ID','AssociatedDocumentLineDocument/LineID'],['BT-153','Bezeichnung','cac:Item/cbc:Name','SpecifiedTradeProduct/Name'],['BT-129','Menge','cbc:InvoicedQuantity','SpecifiedLineTradeDelivery/BilledQuantity'],['BT-146','Einzelpreis netto','cac:Price/cbc:PriceAmount','SpecifiedLineTradeAgreement/NetPriceProductTradePrice/ChargeAmount'],
+  ['BT-152','USt %','cac:Item/cac:ClassifiedTaxCategory/cbc:Percent','SpecifiedLineTradeSettlement/ApplicableTradeTax/RateApplicablePercent'],['BT-131','Netto','cbc:LineExtensionAmount','SpecifiedLineTradeSettlement/SpecifiedTradeSettlementLineMonetarySummation/LineTotalAmount']];
+ const lr=rows('cac:InvoiceLine','SupplyChainTradeTransaction/IncludedSupplyChainTradeLineItem',L.map(l=>[0,l[2],l[3]]));
+ $('#lines').innerHTML='<table><tr>'+L.map((l,i)=>`<th class="${i>1?'n':''}"><span style="display:inline-flex;align-items:center">${l[1]}${Q('cac:InvoiceLine/'+l[2],l[0])}</span></th>`).join('')+'</tr>'
+  +lr.map(r=>'<tr>'+r.map((c,i)=>`<td class="${i>1?'n':''}">${i==3||i==5?fm(c):i==4&&c?esc(c)+' %':esc(c)}</td>`).join('')+'</tr>').join('')+'</table>';
+ LR={h:L.map(l=>l[1]),r:lr};$('#out').hidden=false;
+}
+let VR,LR;
+function qrBlock(){const ib=(V['BT-84']||'').replace(/\s/g,''),pay=parseFloat(V['BT-115']),m=V['BT-81'];
+ if(!ib||!ibanOk(ib)||!(pay>0)||(m&&!['58','30'].includes(m))||typeof qrcode==='undefined')return'';
+ if(CUR!=='EUR')return'<div class="mu" style="margin-top:8px">GiroCode ist nur für EUR möglich.</div>';
+ const nm=(V['BT-59']||V['BT-85']||V['BT-27']||'').slice(0,70),ref=(V['BT-83']||('Rechnung '+V['BT-1'])).slice(0,140);
+ const t=['BCD','002','1','SCT',(V['BT-86']||'').replace(/\s/g,''),nm,ib,'EUR'+pay.toFixed(2),'','',ref].join('\n');
+ try{if(qrcode.stringToBytesFuncs&&qrcode.stringToBytesFuncs['UTF-8'])qrcode.stringToBytes=qrcode.stringToBytesFuncs['UTF-8'];const q=qrcode(0,'M');q.addData(t,'Byte');q.make();
+  return`<div style="margin-top:10px;text-align:center"><div style="background:#fff;width:200px;padding:8px;border-radius:8px;display:inline-block">${q.createSvgTag({scalable:true,cellSize:4,margin:0})}</div><div class="mu">GiroCode (EPC-QR) – in der Banking-App scannen</div></div>`}catch(e){return''}}
+function pv(){const R=[];let p=0;const X=/xrechnung/i.test(V['BT-24']||''),N=x=>parseFloat(x),bad=(l,r,m)=>R.push([l,r,m]),chk=(c,l,r,m)=>c?p++:bad(l,r,m),near=(a,b)=>Math.abs(a-b)<=0.011,f=x=>fm(x),iso=s=>s.replace(/\D/g,'').slice(0,8);
+ [['BR-1','BT-24','Spezifikationskennung (BT-24)'],['BR-2','BT-1','Rechnungsnummer (BT-1)'],['BR-3','BT-2','Rechnungsdatum (BT-2)'],['BR-4','BT-3','Rechnungsart (BT-3)'],['BR-5','BT-5','Währung (BT-5)'],['BR-6','BT-27','Name des Verkäufers (BT-27)'],['BR-7','BT-44','Name des Käufers (BT-44)'],['BR-9','BT-40','Land des Verkäufers (BT-40)'],['BR-11','BT-55','Land des Käufers (BT-55)']].forEach(([r,b,m])=>chk(V[b],'er',r,'Pflichtfeld fehlt: '+m));
+ [['BR-DE-15','BT-10','Käuferreferenz/Leitweg-ID (BT-10)'],['BR-DE-5','BT-41','Ansprechpartner Verkäufer (BT-41)'],['BR-DE-6','BT-42','Telefon Verkäufer (BT-42)'],['BR-DE-7','BT-43','E-Mail Verkäufer (BT-43)'],['BR-DE-3','BT-37','Ort Verkäufer (BT-37)'],['BR-DE-4','BT-38','PLZ Verkäufer (BT-38)'],['BR-DE-8','BT-52','Ort Käufer (BT-52)'],['BR-DE-9','BT-53','PLZ Käufer (BT-53)'],['BR-DE-1','BT-81','Zahlungsart (BT-81)']].forEach(([r,b,m])=>chk(V[b],X?'er':'wa',r,(X?'Pflichtfeld der XRechnung fehlt: ':'Für XRechnung nötig, hier fehlt: ')+m));
+ chk(V['BT-31']||V['BT-32'],'wa','BR-CO-26','Weder USt-IdNr. (BT-31) noch Steuernummer (BT-32) des Verkäufers.');
+ if(V['BT-81']==='58')chk(V['BT-84'],'er','BR-61','SEPA-Überweisung ohne IBAN (BT-84).');
+ if(V['BT-84'])chk(ibanOk(V['BT-84']),'er','IBAN','IBAN-Prüfsumme ungültig.');
+ const ln=rows('cac:InvoiceLine','SupplyChainTradeTransaction/IncludedSupplyChainTradeLineItem',[[0,'cbc:LineExtensionAmount','SpecifiedLineTradeSettlement/SpecifiedTradeSettlementLineMonetarySummation/LineTotalAmount']]);
+ const sl=ln.reduce((a,r)=>a+(N(r[0])||0),0),[b106,b107,b108,b109,b110,b112,b113,b115]=['BT-106','BT-107','BT-108','BT-109','BT-110','BT-112','BT-113','BT-115'].map(k=>N(V[k]));
+ if(ln.length&&ln.every(r=>r[0])&&!isNaN(b106))chk(near(sl,b106),'er','BR-CO-10','Summe der Positionen '+f(sl)+' ≠ BT-106 '+f(b106));
+ if(!isNaN(b106)&&!isNaN(b109))chk(near(b106-(b107||0)+(b108||0),b109),'er','BR-CO-13','BT-109 '+f(b109)+' ≠ Positionen − Nachlässe + Zuschläge');
+ if(VR.length){const st=VR.reduce((a,r)=>a+(N(r[3])||0),0),sb=VR.reduce((a,r)=>a+(N(r[2])||0),0),RID={E:'E',AE:'AE',K:'IC',G:'G',O:'O'};
+  if(!isNaN(b110))chk(near(st,b110),'er','BR-CO-14','USt-Summe BT-110 '+f(b110)+' ≠ Summe der Steueraufschlüsselung '+f(st));
+  if(!isNaN(b109))chk(near(sb,b109),'wa','Summe','Summe der Bemessungsgrundlagen '+f(sb)+' ≠ BT-109 '+f(b109));
+  VR.forEach(r=>{const c=r[0],pc=N(r[1]),bs=N(r[2]),tx=N(r[3]);chk(near(bs*pc/100,tx),'er','BR-CO-17',`USt ${c} ${r[1]} %: ${f(tx)} ≠ ${f(bs)} × ${r[1]} % (${f(bs*pc/100)})`);
+   if(c==='S')chk(pc>0,'er','BR-S-5','Kategorie S braucht einen Satz > 0.');
+   if(RID[c]){chk(pc===0,'er','BR-'+RID[c]+'-5','Kategorie '+c+' erfordert Satz 0.');chk(r[4],'wa','BR-'+RID[c]+'-10','Befreiungsgrund fehlt (Kategorie '+c+').')}})}else bad('er','BG-23','Keine Umsatzsteueraufschlüsselung gefunden.');
+ if(!isNaN(b109)&&!isNaN(b110)&&!isNaN(b112))chk(near(b109+b110,b112),'er','BR-CO-15','BT-112 '+f(b112)+' ≠ netto + USt '+f(b109+b110));
+ if(!isNaN(b112)&&!isNaN(b115))chk(near(b112-(b113||0),b115),'wa','BR-CO-16','Zahlbetrag '+f(b115)+' ≠ brutto − gezahlt '+f(b112-(b113||0))+' (Rundungsbetrag BT-114 nicht berücksichtigt).');
+ if(V['BT-2']&&V['BT-9'])chk(iso(V['BT-9'])>=iso(V['BT-2']),'wa','Datum','Fälligkeit liegt vor dem Rechnungsdatum.');
+ const e=R.filter(x=>x[0]==='er').length;
+ return`<div class="card full"><h2>4 · Prüfung <span class="mu">(vereinfacht – kein Ersatz für den KoSIT-Validator)</span></h2><div style="margin-bottom:6px"><span class="tag ok">${p} bestanden</span> <span class="tag er">${e} Fehler</span> <span class="tag wa">${R.length-e} Hinweise</span></div>`+(R.length?R.map(x=>`<div class="v"><i class="tag ${x[0]}">${esc(x[1])}</i><span>${esc(x[2])}</span></div>`).join(''):'<div class="ok">Keine Auffälligkeiten.</div>')+'</div>'}
+const csv=r=>'\ufeff'+r.map(a=>a.map(c=>{c=String(c??'');return/[;"\n\r]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(';')).join('\r\n');
+async function dl(k,rows){try{const d=window.claude&&await claude.use('downloads');if(!d)return $('#err').textContent='Download hier nicht verfügbar.';
+ await d.save({filename:'e-rechnung_'+(V['BT-1']||'').replace(/[^\w.-]/g,'_')+'_'+k+'.csv',data:csv(rows)})}catch(e){if(e&&e.code!=='declined')$('#err').textContent='Download fehlgeschlagen: '+(e.message||e)}}
+function load(xml){const err=m=>$('#err').textContent=m;err('');const d=new DOMParser().parseFromString(xml,'application/xml');
+ if(d.querySelector('parsererror'))return err('Die Datei enthält kein gültiges XML.');
+ const r=d.documentElement,n=r.localName;if(!['CrossIndustryInvoice','CrossIndustryDocument','Invoice','CreditNote'].includes(n))return err('Unbekanntes Format: Wurzelelement '+n+'.');
+ ROOT=r;LEG=n==='CrossIndustryDocument';CII=n==='CrossIndustryInvoice'||LEG;render()}
+async function inflate(b){const ds=new DecompressionStream('deflate'),w=ds.writable.getWriter();w.write(b).catch(()=>{});w.close().catch(()=>{});return new Response(ds.readable).text()}
+async function fromPdf(buf){const u=new Uint8Array(buf),s=new TextDecoder('latin1').decode(u),re=/(?<!end)stream\r?\n/g,T=/<(\w+:)?(CrossIndustryInvoice|CrossIndustryDocument|Invoice|CreditNote)[\s>]/;let m;
+ while((m=re.exec(s))){const a=m.index+m[0].length,e=s.indexOf('endstream',a);if(e<0)break;re.lastIndex=e+9;const b=u.subarray(a,e),c=[b];
+  const t=b[b.length-1]===10?(b[b.length-2]===13?2:1):b[b.length-1]===13?1:0;if(t)c.unshift(b.subarray(0,b.length-t));
+  for(const d of c){for(const f of [()=>inflate(d),async()=>new TextDecoder().decode(d.subarray(0,400000))]){try{const x=await f();if(T.test(x.slice(0,4000)))return x}catch(_){}}}}return null}
+async function handle(file){$('#err').textContent='';try{
+ if(/\.pdf$/i.test(file.name)||file.type==='application/pdf'){const x=await fromPdf(await file.arrayBuffer());if(!x)return $('#err').textContent='Im PDF wurde kein eingebettetes ZUGFeRD-/Factur-X-XML gefunden (evtl. normales PDF ohne E-Rechnung-Daten).';load(x)}
+ else load(await file.text())}catch(e){$('#err').textContent='Fehler: '+e.message}}
+const dz=$('#drop'),fi=$('#f');dz.onclick=e=>{if(e.target.tagName!=='BUTTON')fi.click()};fi.onchange=()=>fi.files[0]&&handle(fi.files[0]);
+dz.ondragover=e=>{e.preventDefault();dz.classList.add('on')};dz.ondragleave=()=>dz.classList.remove('on');dz.ondrop=e=>{e.preventDefault();dz.classList.remove('on');e.dataTransfer.files[0]&&handle(e.dataTransfer.files[0])};
+$('#emp').onchange=()=>ROOT&&render();
+$('#c1').onclick=()=>ROOT&&dl('felder',[['Gruppe','BT','Feld','Wert','Pfad']].concat(F.filter(f=>V[f[1]]).map(f=>[f[0],f[1],f[2],V[f[1]],CII?f[4]:f[3]])));
+$('#c2').onclick=()=>ROOT&&LR&&dl('positionen',[LR.h].concat(LR.r));
+document.addEventListener('click',e=>{const b=e.target.closest('[data-c]');if(b){try{navigator.clipboard.writeText(b.dataset.c);b.textContent='kopiert ✓'}catch(_){}}});
+$('#ex').onclick=()=>load(`<?xml version="1.0" encoding="UTF-8"?><rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100" xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100" xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100"><rsm:ExchangedDocumentContext><ram:GuidelineSpecifiedDocumentContextParameter><ram:ID>urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0</ram:ID></ram:GuidelineSpecifiedDocumentContextParameter></rsm:ExchangedDocumentContext><rsm:ExchangedDocument><ram:ID>RE-2026-0042</ram:ID><ram:TypeCode>380</ram:TypeCode><ram:IssueDateTime><udt:DateTimeString format="102">20261001</udt:DateTimeString></ram:IssueDateTime></rsm:ExchangedDocument><rsm:SupplyChainTradeTransaction><ram:IncludedSupplyChainTradeLineItem><ram:AssociatedDocumentLineDocument><ram:LineID>1</ram:LineID></ram:AssociatedDocumentLineDocument><ram:SpecifiedTradeProduct><ram:Name>Beratung</ram:Name></ram:SpecifiedTradeProduct><ram:SpecifiedLineTradeAgreement><ram:NetPriceProductTradePrice><ram:ChargeAmount>100.00</ram:ChargeAmount></ram:NetPriceProductTradePrice></ram:SpecifiedLineTradeAgreement><ram:SpecifiedLineTradeDelivery><ram:BilledQuantity unitCode="HUR">10</ram:BilledQuantity></ram:SpecifiedLineTradeDelivery><ram:SpecifiedLineTradeSettlement><ram:ApplicableTradeTax><ram:TypeCode>VAT</ram:TypeCode><ram:CategoryCode>S</ram:CategoryCode><ram:RateApplicablePercent>19</ram:RateApplicablePercent></ram:ApplicableTradeTax><ram:SpecifiedTradeSettlementLineMonetarySummation><ram:LineTotalAmount>1000.00</ram:LineTotalAmount></ram:SpecifiedTradeSettlementLineMonetarySummation></ram:SpecifiedLineTradeSettlement></ram:IncludedSupplyChainTradeLineItem><ram:ApplicableHeaderTradeAgreement><ram:BuyerReference>04011000-12345-34</ram:BuyerReference><ram:SellerTradeParty><ram:Name>Muster GmbH</ram:Name><ram:PostalTradeAddress><ram:PostcodeCode>44135</ram:PostcodeCode><ram:LineOne>Hauptstr. 1</ram:LineOne><ram:CityName>Dortmund</ram:CityName><ram:CountryID>DE</ram:CountryID></ram:PostalTradeAddress><ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">DE123456789</ram:ID></ram:SpecifiedTaxRegistration></ram:SellerTradeParty><ram:BuyerTradeParty><ram:Name>Stadt Beispiel</ram:Name><ram:PostalTradeAddress><ram:PostcodeCode>50667</ram:PostcodeCode><ram:CityName>Köln</ram:CityName><ram:CountryID>DE</ram:CountryID></ram:PostalTradeAddress></ram:BuyerTradeParty></ram:ApplicableHeaderTradeAgreement><ram:ApplicableHeaderTradeSettlement><ram:PaymentReference>RE-2026-0042</ram:PaymentReference><ram:InvoiceCurrencyCode>EUR</ram:InvoiceCurrencyCode><ram:SpecifiedTradeSettlementPaymentMeans><ram:TypeCode>58</ram:TypeCode><ram:PayeePartyCreditorFinancialAccount><ram:IBANID>DE89370400440532013000</ram:IBANID></ram:PayeePartyCreditorFinancialAccount></ram:SpecifiedTradeSettlementPaymentMeans><ram:ApplicableTradeTax><ram:CalculatedAmount>190.00</ram:CalculatedAmount><ram:TypeCode>VAT</ram:TypeCode><ram:BasisAmount>1000.00</ram:BasisAmount><ram:CategoryCode>S</ram:CategoryCode><ram:RateApplicablePercent>19</ram:RateApplicablePercent></ram:ApplicableTradeTax><ram:SpecifiedTradePaymentTerms><ram:Description>Zahlbar innerhalb von 30 Tagen netto</ram:Description><ram:DueDateDateTime><udt:DateTimeString format="102">20261031</udt:DateTimeString></ram:DueDateDateTime></ram:SpecifiedTradePaymentTerms><ram:SpecifiedTradeSettlementHeaderMonetarySummation><ram:LineTotalAmount>1000.00</ram:LineTotalAmount><ram:TaxBasisTotalAmount>1000.00</ram:TaxBasisTotalAmount><ram:TaxTotalAmount currencyID="EUR">190.00</ram:TaxTotalAmount><ram:GrandTotalAmount>1190.00</ram:GrandTotalAmount><ram:DuePayableAmount>1190.00</ram:DuePayableAmount></ram:SpecifiedTradeSettlementHeaderMonetarySummation></ram:ApplicableHeaderTradeSettlement></rsm:SupplyChainTradeTransaction></rsm:CrossIndustryInvoice>`);
+</script></body></html>
