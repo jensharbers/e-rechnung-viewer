@@ -77,7 +77,7 @@ function rows(ub,cb,cols){const base=CII?cb:ub;return find(ROOT,mp(ROOT.localNam
 const cp=t=>`<button class="s" type="button" data-c="${esc(t)}">kopieren</button>`;
 function render(){
  V={};F.forEach(f=>V[f[1]]=val(ROOT,CII?f[4]:f[3]));CUR=V['BT-5']||'EUR';
- const pay=V['BT-115'],kv=(k,v)=>v?`<div class="kv"><span>${k}</span><b>${v}</b></div>`:'';
+ const pay=payAmt(),kv=(k,v)=>v?`<div class="kv"><span>${k}</span><b>${v}</b></div>`:'';
  const ib=V['BT-84'],ok=ib&&ibanOk(ib),ref=V['BT-83']||(V['BT-1']?'Rechnung '+V['BT-1']:''),means=V['BT-81'];
  let p1=`<div class="card"><h2>1 · Wie viel überweisen?</h2><div class="big">${pay?fm(pay):'–'}</div>${pay?cp(pay):''}<div style="margin-top:8px">`+kv('Gesamtbetrag brutto',V['BT-112']&&fm(V['BT-112']))+kv('abzgl. bereits gezahlt',V['BT-113']&&fm(V['BT-113']))+kv('Fällig am',V['BT-9']&&fd(V['BT-9']))+kv('Zahlungsbedingungen',esc(V['BT-20']))+'</div>'
   +(pay&&parseFloat(pay)<=0?'<div class="err">Zahlbetrag ist 0 oder negativ (Gutschrift/bereits bezahlt).</div>':'')+'</div>';
@@ -101,7 +101,8 @@ function render(){
  LR={h:L.map(l=>l[1]),r:lr};$('#out').hidden=false;
 }
 let VR,LR;
-function qrBlock(){const ib=(V['BT-84']||'').replace(/\s/g,''),pay=parseFloat(V['BT-115']),m=V['BT-81'];
+const payAmt=()=>V['BT-115']||(V['BT-112']?String(parseFloat(V['BT-112'])-(parseFloat(V['BT-113'])||0)):'');
+function qrBlock(){const ib=(V['BT-84']||'').replace(/\s/g,''),pay=parseFloat(payAmt()),m=V['BT-81'];
  if(!ib||!ibanOk(ib)||!(pay>0)||(m&&!['58','30'].includes(m))||typeof qrcode==='undefined')return'';
  if(CUR!=='EUR')return'<div class="mu" style="margin-top:8px">GiroCode ist nur für EUR möglich.</div>';
  const nm=(V['BT-59']||V['BT-85']||V['BT-27']||'').slice(0,70),ref=(V['BT-83']||('Rechnung '+V['BT-1'])).slice(0,140);
